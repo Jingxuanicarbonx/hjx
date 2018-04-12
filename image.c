@@ -4,6 +4,7 @@
 #include "cuda.h"
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -12,6 +13,21 @@
 
 #include <Python.h> 
 #define MAXCHAR 1000
+
+
+const char* getfield(char* line, int num)
+{
+	const char* tok;
+	for (tok = strtok(line, ",");
+		tok && *tok;
+		tok = strtok(NULL, ",\n"))
+	{
+		if (!--num)
+			return tok;
+	}
+	return NULL;
+}
+
 
 int windows = 0;
 
@@ -242,17 +258,39 @@ image **load_alphabet()
 void python_write_to_file() {
 	Py_SetProgramName("");
 	Py_Initialize();
-	//PyRun_SimpleString("\n");
 	PyRun_SimpleString("import requests\n");
 	PyRun_SimpleString("import re\n");
-	PyRun_SimpleString("r = requests.post('http://118.89.14.44:8080/api/foodcls',files={'image':open('/data1/home/Justin/darknet/results/cropped.png','rb')}).json()\n");
-	PyRun_SimpleString("input = r['name']");
+	PyRun_SimpleString("import unicodedata\n");
 	PyRun_SimpleString("address ='BS.txt'\n");
-	PyRun_SimpleString("with open(address, 'w+') as file:file.write(input)\n");
+	PyRun_SimpleString("r = requests.post('http://118.89.14.44:8080/api/foodcls',files={'image':open('/data1/home/Justin/darknet/results/cropped.png','rb')}).json()\n");
+	PyRun_SimpleString("input = r['name']\n");
+	PyRun_SimpleString("a = re.split('@', input)\n");
+	PyRun_SimpleString("en = a[-1]\n");
+	PyRun_SimpleString("unicodedata.normalize('NFKD', en).encode('ascii','ignore')\n");
+	PyRun_SimpleString("weight = a[0][5:]\n");
+	PyRun_SimpleString("if en[-1] == '.' or en[:8] == 'not_food' : en = '.' + en\n");
+	
+	//PyRun_SimpleString("lines = [line.split(',') for line in open('food_en_cn.csv')]\n");
+	//PyRun_SimpleString("df = [[str(x) for x in line[:4]] for line in lines[1:]]\n");
+
+	//PyRun_SimpleString("en_col = [col[1] for col in df]\n");
+	//PyRun_SimpleString("english_name = str(en)\n");
+
+	//PyRun_SimpleString("if en[-1] != '.':result = [x for x in en_col if x == english_name]\n");
+	//PyRun_SimpleString("indexes = [i for i,x in enumerate(en_col) if x == english_name]\n");
+	//PyRun_SimpleString("print('indexes: ', indexes)\n");
+	//PyRun_SimpleString("full_name = None\n");
+	//PyRun_SimpleString("if indexes:full_name = df[indexes[0]][2]\n");
+	//PyRun_SimpleString("if not indexes:full_name = '.'\n");
+
+	PyRun_SimpleString("full_name = en + ':' + weight\n");
+	PyRun_SimpleString("with open(address, 'w+') as file:file.write(full_name)\n");
 	PyRun_SimpleString("file.close()\n");
 	Py_Finalize();
 }
 
+
+//cuts the specified length off the string  from a beginning point 
 int str_cut(char *str, int begin, int len)
 {
 	int l = strlen(str);
@@ -264,11 +302,12 @@ int str_cut(char *str, int begin, int len)
 	return len;
 }
 
-int find_symbol(char *str, int length)
+
+int find_symbol(char *str, int length, char symbol)
 {
 	int i;
 	for (i = 0; i < length; ++i) {
-		if (str[i] == '@')
+		if (str[i] == symbol)
 			return i+1;
 	}
 	return 0;
@@ -317,11 +356,6 @@ void draw_detections(image im, int num, float thresh, box *boxes, float **probs,
             if(top < 0) top = 0;
             if(bot > im.h-1) bot = im.h-1;
 
-			//char path[12];
-			//char dir[] = "results/";
-			//sprintf(path, "%d", a);
-			//strncat(dir, path, 20);
-			//printf("%s\n", dir);
 			char dir[] = "results/cropped";
  			image BS = crop_image(im_copy, left, top, right - left, bot - top);
 			save_image(BS, dir);
@@ -333,19 +367,20 @@ void draw_detections(image im, int num, float thresh, box *boxes, float **probs,
 			FILE *fp;
 			char str[MAXCHAR];
 			char* filename = "BS.txt";
-			int l = 0;
+			int is_food = 0;
 
 			fp = fopen(filename, "r");
 			if (fp == NULL)
 				printf("Could not open file %s", filename);
 			while (fgets(str, MAXCHAR, fp) != NULL) {
-				l = strlen(str);
-				int x = find_symbol(str, l);
-				str_cut(str, 0, x);
+				if (str[0] != '.') 
+					is_food = 1;
 			}
 			fclose(fp);
+			//finish reading file
 
-			if (l < 20) {
+
+			if (is_food == 1) {
 				draw_box_width(im, left, top, right, bot, width, red, green, blue);
 
 				if (alphabet) {
